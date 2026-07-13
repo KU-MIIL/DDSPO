@@ -39,8 +39,8 @@ behind an adapter.
 |----------------|----------|------------|-------|
 | `sd15` | SD 1.4 / 1.5 UNet | epsilon | single CLIP text encoder |
 | `sdxl` | SDXL UNet | epsilon | dual CLIP encoders + micro-conditioning |
-| `sd3`  | SD3 MMDiT | flow matching | full transformer finetune, 2×CLIP + T5 |
-| `sana` | SANA transformer | flow matching | LoRA, DC-AE VAE, Gemma2 encoder |
+| `sd3`  | SD3-Medium MMDiT | flow matching | LoRA (rank 128), 2×CLIP + T5 |
+| `sana` | SANA transformer | flow matching | LoRA (rank 128), DC-AE VAE, Gemma2 encoder |
 
 ## Repository structure
 

@@ -42,7 +42,7 @@ accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train \
     --train_batch_size 1 \
     --gradient_accumulation_steps 2048 \
     --max_train_steps 100 \
-    --learning_rate 3.906e-5 \
+    --learning_rate 2.5e-9 --scale_lr \
     --lr_scheduler constant_with_warmup --lr_warmup_steps 100 \
     --beta_dpo 8000 \
     --cpp \

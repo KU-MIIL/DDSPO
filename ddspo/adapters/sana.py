@@ -7,7 +7,6 @@ Prompts are encoded by Gemma2 through ``SanaPipeline.encode_prompt``.
 """
 
 import copy
-from contextlib import contextmanager
 
 import torch
 import torch.utils.data
@@ -17,26 +16,8 @@ from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeli
 from diffusers.training_utils import compute_density_for_timestep_sampling
 
 from ..data import collate_fn, make_self_training_dataloader
+from ._lora import lora_off
 from .base import ModelAdapter
-
-
-def _lora_layers(model):
-    from peft.tuners.lora import LoraLayer
-    return [m for m in model.modules() if isinstance(m, LoraLayer)]
-
-
-def _lora_enable(model, flag=True):
-    for m in _lora_layers(model):
-        m.enable_adapters(flag)
-
-
-@contextmanager
-def lora_off(model):
-    _lora_enable(model, False)
-    try:
-        yield
-    finally:
-        _lora_enable(model, True)
 
 
 class SANAAdapter(ModelAdapter):

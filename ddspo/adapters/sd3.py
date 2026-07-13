@@ -1,8 +1,9 @@
-"""Stable Diffusion 3 adapter (MMDiT, flow matching).
+"""Stable Diffusion 3 adapter (MMDiT, flow matching, LoRA).
 
-Ported from the original ``ddspo_sd3.py`` trainer. SD3 full-finetunes the
-transformer and keeps a separate frozen reference transformer for the DPO term.
-Three text encoders (2x CLIP + T5) produce the joint prompt embedding.
+Ported from the original ``ddspo_sd3_lora.py`` trainer. SD3 is fine-tuned with a
+LoRA adapter on the transformer; the reference prediction is obtained by running
+the same transformer with the adapter temporarily disabled (``lora_off``). Three
+text encoders (2x CLIP + T5) produce the joint prompt embedding.
 """
 
 import copy
@@ -12,10 +13,16 @@ import torch.utils.data
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
-from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
+from diffusers.training_utils import compute_density_for_timestep_sampling
 
 from ..data import collate_fn, make_self_training_dataloader
+from ._lora import lora_off
 from .base import ModelAdapter
+
+DEFAULT_LORA_TARGETS = [
+    "attn.add_k_proj", "attn.add_q_proj", "attn.add_v_proj", "attn.to_add_out",
+    "attn.to_k", "attn.to_out.0", "attn.to_q", "attn.to_v",
+]
 
 
 def _encode_with_clip(text_encoder, tokenizer, prompt, device):
@@ -54,24 +61,26 @@ class SD3Adapter(ModelAdapter):
         ]
         self.vae = AutoencoderKL.from_pretrained(p, subfolder="vae", revision=rev, variant=var)
         transformer = SD3Transformer2DModel.from_pretrained(p, subfolder="transformer", revision=rev, variant=var)
-        self.ref_transformer = SD3Transformer2DModel.from_pretrained(
-            p, subfolder="transformer", revision=rev, variant=var)
 
+        transformer.requires_grad_(False)
         self.vae.requires_grad_(False)
-        self.ref_transformer.requires_grad_(False)
         for te in self.text_encoders:
             te.requires_grad_(False)
-        transformer.requires_grad_(True)
+
+        # Reference forward = same transformer with LoRA disabled (no separate copy).
+        from peft import LoraConfig
+        target_modules = ([m.strip() for m in args.lora_layers.split(",")]
+                          if args.lora_layers else DEFAULT_LORA_TARGETS)
+        transformer.add_adapter(LoraConfig(
+            r=args.rank, lora_alpha=args.rank, init_lora_weights="gaussian",
+            target_modules=target_modules))
         if args.gradient_checkpointing:
             transformer.enable_gradient_checkpointing()
         return transformer
 
     def place_frozen(self, accelerator, weight_dtype):
         device = accelerator.device
-        # VAE is always kept in fp32 for numerical stability; the trainable
-        # transformer is left in fp32 too (handled by accelerator autocast).
-        self.vae.to(device, dtype=torch.float32)
-        self.ref_transformer.to(device, dtype=weight_dtype)
+        self.vae.to(device, dtype=torch.float32)  # VAE kept fp32 for stability
         for te in self.text_encoders:
             te.to(device, dtype=weight_dtype)
 
@@ -121,18 +130,20 @@ class SD3Adapter(ModelAdapter):
         prompt_embeds, pooled = self._encode_prompt(batch["pos_prompts"], device)
         neg_prompt_embeds, neg_pooled = self._encode_prompt(batch["neg_prompts"], device)
 
-        def run(transformer, hidden, ehs, pooled_proj, ts):
-            return transformer(hidden_states=hidden, timestep=ts, encoder_hidden_states=ehs,
-                               pooled_projections=pooled_proj, return_dict=False)[0]
+        def run(hidden, ehs, pooled_proj, ts):
+            return model(hidden_states=hidden, timestep=ts, encoder_hidden_states=ehs,
+                         pooled_projections=pooled_proj, return_dict=False)[0]
+
+        def precondition(pred, noisy):
+            return pred * (-sigmas) + noisy if args.precondition_outputs else pred
 
         dup_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
         dup_pooled = torch.cat([pooled, pooled], dim=0)
-        model_pred = run(model, noisy_model_input, dup_embeds, dup_pooled, timesteps)
-        if args.precondition_outputs:
-            model_pred = model_pred * (-sigmas) + noisy_model_input
+        model_pred = precondition(run(noisy_model_input, dup_embeds, dup_pooled, timesteps), noisy_model_input)
+        with torch.no_grad(), lora_off(model):
+            ref_pred = precondition(run(noisy_model_input, dup_embeds, dup_pooled, timesteps), noisy_model_input)
 
-        target = model_input if args.precondition_outputs else (noise - model_input)
-        target = target.clone()
+        target = (model_input if args.precondition_outputs else (noise - model_input)).clone()
 
         paireds = torch.zeros_like(batch["paireds"]) if args.cpp else batch["paireds"]
         cpp_indices = (paireds == 0).nonzero(as_tuple=True)[0]
@@ -144,21 +155,17 @@ class SD3Adapter(ModelAdapter):
             cpp_ts = timesteps[final_indices]
             cpp_embeds = torch.cat([prompt_embeds[pos_indices], neg_prompt_embeds[pos_indices]], dim=0)
             cpp_pooled = torch.cat([pooled[pos_indices], neg_pooled[pos_indices]], dim=0)
-            with torch.no_grad():
-                ref_pos_neg = run(self.ref_transformer, cpp_noisy, cpp_embeds, cpp_pooled, cpp_ts)
+            with torch.no_grad(), lora_off(model):
+                ref_pair = run(cpp_noisy, cpp_embeds, cpp_pooled, cpp_ts)
                 if args.precondition_outputs:
-                    ref_pos_neg = ref_pos_neg * (-sigmas[final_indices]) + cpp_noisy
-            target[final_indices] = ref_pos_neg.to(dtype=target.dtype)
-
-        with torch.no_grad():
-            ref_pred = run(self.ref_transformer, noisy_model_input, dup_embeds, dup_pooled, timesteps)
-            if args.precondition_outputs:
-                ref_pred = ref_pred * (-sigmas) + noisy_model_input
+                    ref_pair = ref_pair * (-sigmas[final_indices]) + cpp_noisy
+            target[final_indices] = ref_pair.to(dtype=target.dtype)
 
         return model_pred, ref_pred, target, timesteps
 
     def save(self, args, accelerator, model):
+        from peft.utils import get_peft_model_state_dict
         transformer = accelerator.unwrap_model(model)
-        pipeline = StableDiffusion3Pipeline.from_pretrained(
-            args.pretrained_model_name_or_path, transformer=transformer)
-        pipeline.save_pretrained(args.output_dir)
+        transformer_lora_layers = get_peft_model_state_dict(transformer)
+        StableDiffusion3Pipeline.save_lora_weights(
+            save_directory=args.output_dir, transformer_lora_layers=transformer_lora_layers)

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# DDSPO training for Stable Diffusion 3 (flow matching, full transformer finetune).
+# DDSPO training for Stable Diffusion 3 (flow matching, LoRA on the transformer),
+# TF-CPP. Config follows the paper experiment (rank 128, beta 1000, fp16,
+# effective batch 2048, lr 4e-8 with --scale_lr).
 #   bash scripts/train_ddspo_sd3.sh
 set -euo pipefail
 
@@ -15,14 +17,14 @@ accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train \
     --output_dir "${OUTPUT_DIR}" \
     --cache_dir ./cache \
     --resolution 1024 \
-    --mixed_precision bf16 \
-    --gradient_checkpointing \
-    --train_batch_size 1 \
-    --gradient_accumulation_steps 2048 \
+    --mixed_precision fp16 \
+    --train_batch_size 4 \
+    --gradient_accumulation_steps 256 \
     --max_train_steps 100 \
-    --learning_rate 9.766e-6 \
-    --lr_scheduler constant \
-    --beta_dpo 2000 \
+    --learning_rate 4e-8 --scale_lr \
+    --lr_scheduler constant --lr_warmup_steps 0 \
+    --beta_dpo 1000 \
+    --rank 128 \
     --cpp \
     --weighting_scheme logit_normal \
     --precondition_outputs 1 \
