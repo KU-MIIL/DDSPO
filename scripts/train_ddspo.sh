@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# DDSPO training for SD1.x / SDXL in reference-pair mode (no extra training).
-# The target is induced from the frozen reference model conditioned on the
-# original vs. the degraded prompt (--only_cfg).
+# DDSPO training for SD1.x / SDXL with TF-CPP (training-free contrastive policy
+# pair). The target is induced from the frozen reference model conditioned on
+# the original vs. the degraded prompt (--only_cfg); no extra training needed.
 #
 #   MODEL_TYPE=sd15 bash scripts/train_ddspo.sh
 #   MODEL_TYPE=sdxl MODEL_NAME=stabilityai/stable-diffusion-xl-base-1.0 bash scripts/train_ddspo.sh

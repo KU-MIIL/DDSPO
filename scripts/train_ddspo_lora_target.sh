@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# DDSPO in trained-policy-pair mode (SD1.x / SDXL):
-#   1) pre-train the winning/losing LoRA pair with an MSE objective;
+# DDSPO with DD-CPP (data-driven contrastive policy pair), SD1.x / SDXL:
+#   1) pre-train the winning/losing LoRA pair on a preference dataset (MSE);
 #   2) run DDSPO using those LoRAs as the target source via --lora_path.
+# DATA_DIR should hold preference pairs (pos_file = chosen, neg_file = rejected).
 #
 #   MODEL_TYPE=sd15 bash scripts/train_ddspo_lora_target.sh
 set -euo pipefail

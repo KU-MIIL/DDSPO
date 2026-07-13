@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-"""Pre-train the winning / losing model pair for DDSPO (LoRA-target mode).
+"""Pre-train the winning / losing model pair for DDSPO DD-CPP (data-driven).
 
 This trains two LoRA adapters on a shared base UNet:
 
@@ -10,8 +10,8 @@ This trains two LoRA adapters on a shared base UNet:
 both with a plain epsilon-MSE objective and the positive prompt as conditioning.
 The resulting ``pos_lora_unet/`` and ``neg_lora_unet/`` directories are passed to
 ``ddspo/train.py`` via ``--lora_path`` to supply the contrastive-policy-pair
-targets. Supports SD1.x and SDXL. See the paper (DDSPO) for the "training a
-separate winning and losing model" instantiation.
+targets. Supports SD1.x and SDXL. This is the DD-CPP instantiation: the pair is
+trained on an existing preference dataset (pos = chosen, neg = rejected).
 """
 
 import argparse

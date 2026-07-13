@@ -66,8 +66,8 @@ def parse_args():
     p.add_argument("--beta_dpo", type=float, default=5000,
                    help="DPO temperature controlling the strength of the KL penalty.")
     p.add_argument("--only_cfg", action="store_true",
-                   help="Reference-pair mode: derive every target from the reference model "
-                        "conditioned on the original vs. degraded prompt (no paired data needed).")
+                   help="TF-CPP (training-free): derive every target from the frozen reference "
+                        "model conditioned on the original vs. degraded prompt (no training needed).")
     p.add_argument("--guidance_scale", type=float, default=1,
                    help="CFG scale for the reference target (SD1.x/SDXL only).")
     p.add_argument("--rand_cond", action="store_true",
@@ -82,8 +82,8 @@ def parse_args():
     p.add_argument("--loss_weighting", type=str, default=None, choices=["linear"],
                    help="Optional timestep weighting of the DPO loss (SD1.x/SDXL).")
     p.add_argument("--lora_path", type=str, default=None,
-                   help="Directory with pre-trained pos_lora_unet/ and neg_lora_unet/ "
-                        "(winning/losing model pair) used to build targets. SD1.x/SDXL only.")
+                   help="DD-CPP (data-driven): directory with the pre-trained pos_lora_unet/ and "
+                        "neg_lora_unet/ (winning/losing) pair used to build targets. SD1.x/SDXL only.")
 
     # --- SDXL ---
     p.add_argument("--pretrained_vae_model_name_or_path", type=str, default=None,
