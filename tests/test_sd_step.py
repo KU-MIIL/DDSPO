@@ -39,7 +39,7 @@ class _FakeTextEncoder(torch.nn.Module):
 
 def _make_adapter():
     adapter = SDAdapter(sdxl=False)
-    adapter.args = SimpleNamespace(guidance_scale=1)
+    adapter.args = SimpleNamespace()
     adapter.noise_scheduler = DDPMScheduler(num_train_timesteps=10)
     adapter.num_train_timesteps = 10
     adapter.text_encoder = _FakeTextEncoder()
@@ -48,7 +48,6 @@ def _make_adapter():
     adapter.ref_unet = _tiny_unet()
     adapter.pos_lora_unet = None
     adapter.neg_lora_unet = None
-    adapter.null_encoder_hidden_states = None
     return adapter
 
 
@@ -65,8 +64,7 @@ def _batch(b=2):
 def test_sd_training_step_and_loss():
     adapter = _make_adapter()
     model = _tiny_unet()
-    args = SimpleNamespace(only_cfg=True, lora_path=None, guidance_scale=1, beta_dpo=5000,
-                           loss_weighting=None)
+    args = SimpleNamespace(cpp=True, lora_path=None, beta_dpo=5000, loss_weighting=None)
 
     model_pred, ref_pred, target, timesteps = adapter.training_step(
         model, _batch(2), args, torch.float32, torch.device("cpu"))

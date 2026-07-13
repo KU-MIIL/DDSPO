@@ -65,11 +65,10 @@ def parse_args():
     # --- DDSPO method ---
     p.add_argument("--beta_dpo", type=float, default=5000,
                    help="DPO temperature controlling the strength of the KL penalty.")
-    p.add_argument("--only_cfg", action="store_true",
-                   help="TF-CPP (training-free): derive every target from the frozen reference "
-                        "model conditioned on the original vs. degraded prompt (no training needed).")
-    p.add_argument("--guidance_scale", type=float, default=1,
-                   help="CFG scale for the reference target (SD1.x/SDXL only).")
+    p.add_argument("--cpp", action="store_true",
+                   help="Use contrastive-policy-pair (CPP) score targets for every sample (DDSPO). "
+                        "Without it, targets are the forward-process noise (Diffusion-DPO baseline). "
+                        "The CPP instantiation is TF-CPP by default, or DD-CPP when --lora_path is set.")
     p.add_argument("--rand_cond", action="store_true",
                    help="Random-condition-removal: mix in unpaired reference-pair supervision.")
     p.add_argument("--rand_cond_lambda", type=float, default=20)
@@ -82,8 +81,9 @@ def parse_args():
     p.add_argument("--loss_weighting", type=str, default=None, choices=["linear"],
                    help="Optional timestep weighting of the DPO loss (SD1.x/SDXL).")
     p.add_argument("--lora_path", type=str, default=None,
-                   help="DD-CPP (data-driven): directory with the pre-trained pos_lora_unet/ and "
-                        "neg_lora_unet/ (winning/losing) pair used to build targets. SD1.x/SDXL only.")
+                   help="DD-CPP (data-driven contrastive policy pair): directory with the winning "
+                        "(pos_lora_unet/) and losing (neg_lora_unet/) policies pre-trained on a "
+                        "preference dataset; their scores are the targets. SD1.x/SDXL only.")
 
     # --- SDXL ---
     p.add_argument("--pretrained_vae_model_name_or_path", type=str, default=None,

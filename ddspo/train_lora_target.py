@@ -11,7 +11,8 @@ both with a plain epsilon-MSE objective and the positive prompt as conditioning.
 The resulting ``pos_lora_unet/`` and ``neg_lora_unet/`` directories are passed to
 ``ddspo/train.py`` via ``--lora_path`` to supply the contrastive-policy-pair
 targets. Supports SD1.x and SDXL. This is the DD-CPP instantiation: the pair is
-trained on an existing preference dataset (pos = chosen, neg = rejected).
+trained on a preference-labeled dataset (pos_file = preferred sample x_w,
+neg_file = dispreferred sample x_l).
 """
 
 import argparse

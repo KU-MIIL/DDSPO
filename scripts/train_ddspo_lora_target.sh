@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # DDSPO with DD-CPP (data-driven contrastive policy pair), SD1.x / SDXL:
 #   1) pre-train the winning/losing LoRA pair on a preference dataset (MSE);
-#   2) run DDSPO using those LoRAs as the target source via --lora_path.
-# DATA_DIR should hold preference pairs (pos_file = chosen, neg_file = rejected).
+#   2) run DDSPO using those policies as the target source via --lora_path.
+# DATA_DIR should hold a preference dataset: pos_file = preferred sample (x_w),
+# neg_file = dispreferred sample (x_l), for each prompt (e.g. Pick-a-Pic).
+# Paper DD-CPP defaults: pair LoRA rank 4, lr 1e-4, up to 300 steps; DDSPO beta 8000.
 #
 #   MODEL_TYPE=sd15 bash scripts/train_ddspo_lora_target.sh
 set -euo pipefail
@@ -23,13 +25,13 @@ accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train_lora_target \
     --cache_dir ./cache \
     --mixed_precision fp16 \
     --train_batch_size 1 \
-    --gradient_accumulation_steps 128 \
-    --max_train_steps 200 \
+    --gradient_accumulation_steps 2048 \
+    --max_train_steps 300 \
     --lora_rank 4 --lora_alpha 4.0 --lora_lr 1e-4 \
-    --checkpointing_steps 100 \
+    --checkpointing_steps 50 \
     --dataloader_num_workers 8
 
-# 2) DDSPO with the trained policy pair as the target source.
+# 2) DDSPO with the trained policy pair as the target source (beta 8000).
 accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train \
     --model_type "${MODEL_TYPE}" \
     --pretrained_model_name_or_path "${MODEL_NAME}" \
@@ -38,12 +40,12 @@ accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train \
     --cache_dir ./cache \
     --mixed_precision fp16 \
     --train_batch_size 1 \
-    --gradient_accumulation_steps 128 \
-    --max_train_steps 200 \
-    --learning_rate 2.5e-9 --scale_lr \
+    --gradient_accumulation_steps 2048 \
+    --max_train_steps 100 \
+    --learning_rate 3.906e-5 \
     --lr_scheduler constant_with_warmup --lr_warmup_steps 100 \
-    --beta_dpo 12000 \
-    --only_cfg \
+    --beta_dpo 8000 \
+    --cpp \
     --lora_path "${LORA_DIR}" \
     --checkpointing_steps 50 \
     --dataloader_num_workers 8

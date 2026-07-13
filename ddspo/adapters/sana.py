@@ -126,18 +126,18 @@ class SANAAdapter(ModelAdapter):
 
         target = (noise - model_input).clone()
 
-        paireds = torch.zeros_like(batch["paireds"]) if args.only_cfg else batch["paireds"]
-        stdpo_indices = (paireds == 0).nonzero(as_tuple=True)[0]
-        if len(stdpo_indices) > 0:
-            pos_indices = stdpo_indices
-            neg_indices = stdpo_indices + paireds.shape[0]
+        paireds = torch.zeros_like(batch["paireds"]) if args.cpp else batch["paireds"]
+        cpp_indices = (paireds == 0).nonzero(as_tuple=True)[0]
+        if len(cpp_indices) > 0:
+            pos_indices = cpp_indices
+            neg_indices = cpp_indices + paireds.shape[0]
             final_indices = torch.cat([pos_indices, neg_indices], dim=0)
-            stdpo_noisy = noisy_model_input[final_indices]
-            stdpo_ts = timesteps[final_indices]
-            stdpo_embeds = torch.cat([prompt_embeds[stdpo_indices], neg_prompt_embeds[stdpo_indices]], dim=0)
-            stdpo_mask = torch.cat([prompt_mask[stdpo_indices], neg_prompt_mask[stdpo_indices]], dim=0)
+            cpp_noisy = noisy_model_input[final_indices]
+            cpp_ts = timesteps[final_indices]
+            cpp_embeds = torch.cat([prompt_embeds[cpp_indices], neg_prompt_embeds[cpp_indices]], dim=0)
+            cpp_mask = torch.cat([prompt_mask[cpp_indices], neg_prompt_mask[cpp_indices]], dim=0)
             with torch.no_grad(), lora_off(model):
-                ref_pos_neg = run(stdpo_noisy, stdpo_embeds, stdpo_mask, stdpo_ts)
+                ref_pos_neg = run(cpp_noisy, cpp_embeds, cpp_mask, cpp_ts)
             target[final_indices] = ref_pos_neg.to(dtype=target.dtype)
 
         return model_pred, ref_pred, target, timesteps

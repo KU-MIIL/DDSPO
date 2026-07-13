@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # DDSPO training for SD1.x / SDXL with TF-CPP (training-free contrastive policy
-# pair). The target is induced from the frozen reference model conditioned on
-# the original vs. the degraded prompt (--only_cfg); no extra training needed.
+# pair). --cpp turns on CPP score targets (DDSPO); with no --lora_path the pair
+# is the frozen reference model on the original vs. the degraded prompt (TF-CPP).
+# Paper defaults: effective batch 2048, 100 steps, beta 16000, lr = beta/2.048e8.
 #
 #   MODEL_TYPE=sd15 bash scripts/train_ddspo.sh
 #   MODEL_TYPE=sdxl MODEL_NAME=stabilityai/stable-diffusion-xl-base-1.0 bash scripts/train_ddspo.sh
@@ -21,12 +22,11 @@ accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train \
     --cache_dir ./cache \
     --mixed_precision fp16 \
     --train_batch_size 1 \
-    --gradient_accumulation_steps 128 \
-    --max_train_steps 200 \
-    --learning_rate 2.5e-9 --scale_lr \
+    --gradient_accumulation_steps 2048 \
+    --max_train_steps 100 \
+    --learning_rate 7.8125e-5 \
     --lr_scheduler constant_with_warmup --lr_warmup_steps 100 \
-    --beta_dpo 12000 \
-    --only_cfg \
-    --guidance_scale 1 \
+    --beta_dpo 16000 \
+    --cpp \
     --checkpointing_steps 50 \
     --dataloader_num_workers 8

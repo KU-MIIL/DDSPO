@@ -14,19 +14,24 @@ derived from terminal samples, which is not aligned with the model's actual
 **backward** denoising transitions. DDSPO instead defines stepwise preference
 supervision directly over the backward denoising transitions through a
 **contrastive policy pair (CPP)** — a *winning* policy and a *losing* policy
-whose denoising scores serve as the preferred / dispreferred targets. We provide
-two ways to instantiate the CPP:
+whose per-step denoising scores serve as the preferred / dispreferred targets
+(ε\*ʷ, ε\*ˡ). Training is enabled with `--cpp`: every sample then uses CPP score
+targets (DDSPO). Without `--cpp`, targets are the forward-process noise, which
+reduces to the Diffusion-DPO baseline.
 
-| Instantiation | How the winning/losing pair is obtained | Data you need | Flag |
-|---------------|------------------------------------------|---------------|------|
-| **TF-CPP** (training-free) | A *frozen* reference model conditioned on the **original** prompt (winning) vs. a **semantically degraded** prompt (losing). No extra training, reward model, or annotations. | prompts + degraded variants you create | `--only_cfg` |
-| **DD-CPP** (data-driven) | A **winning** and a **losing** model trained on an **existing preference dataset** (e.g. Pick-a-Pic chosen vs. rejected), then used as the pair. | a preference dataset | pre-train with `ddspo.train_lora_target`, then pass `--lora_path` |
+The paper gives two ways to instantiate the CPP:
 
-Both share the same Diffusion-DPO objective and training loop; only the source
-of the contrastive pair (and therefore the data) differs. Model-specific pieces
-live behind an adapter.
+| Instantiation | How the winning/losing pair is obtained | Data you need | Flags |
+|---------------|------------------------------------------|---------------|-------|
+| **TF-CPP** (training-free) | A *frozen* reference model, conditioned on the **original** prompt `c` (winning) vs. a **semantically degraded** prompt `c⁻` (losing). No extra training, reward model, or annotations. | prompts + degraded variants you generate | `--cpp` |
+| **DD-CPP** (data-driven) | A **winning** model `φʷ` and a **losing** model `φˡ`, each fine-tuned on the preferred / dispreferred samples of a preference-labeled dataset, then used as the pair. | a preference dataset `{(xʷ₀, xˡ₀, c)}` | pre-train the pair with `ddspo.train_lora_target`, then `--cpp --lora_path <dir>` |
 
-> Naming: **TF-CPP** = training-free CPP, **DD-CPP** = data-driven CPP.
+Both share the same DDSPO objective and training loop; only the source of the
+contrastive pair (and therefore the data) differs. Model-specific pieces live
+behind an adapter.
+
+> Naming: **CPP** = contrastive policy pair, **TF-CPP** = training-free CPP,
+> **DD-CPP** = data-driven CPP.
 
 ## Supported models
 
@@ -68,8 +73,8 @@ Both modes train on **pre-encoded VAE latent pairs** in the same on-disk layout
 ```
 <data_dir>/
   metadata.jsonl                    # {id, prompt, neg_prompt, pos_file, neg_file}
-  latents/<id>.safetensors          # positive / winning latent
-  latents/<id>_neg.safetensors      # negative / losing latent
+  latents/<id>.safetensors          # preferred latent  (x_w)
+  latents/<id>_neg.safetensors      # dispreferred latent (x_l)
 ```
 
 ## TF-CPP (training-free)
@@ -94,8 +99,8 @@ just prompts and their degraded variants — no preference labels needed.
    bash scripts/prepare_latents.sh
    ```
 
-3. **Train** with `--only_cfg` (the target is the frozen reference model on the
-   original vs. degraded prompt):
+3. **Train** with `--cpp` (no `--lora_path`); the target is the frozen reference
+   model on the original prompt `c` vs. the degraded prompt `c⁻`:
 
    ```bash
    MODEL_TYPE=sd15 bash scripts/train_ddspo.sh                      # SD1.5
@@ -107,24 +112,27 @@ just prompts and their degraded variants — no preference labels needed.
 
 ## DD-CPP (data-driven)
 
-The winning / losing pair is *trained* on an existing preference dataset
-(e.g. Pick-a-Pic), then used to supply the targets. SD1.x / SDXL.
+The winning / losing pair is *trained* on any preference-labeled dataset
+`{(xʷ₀, xˡ₀, c)}` (preferred sample, dispreferred sample, prompt), then used to
+supply the targets. SD1.x / SDXL. (In the paper, Pick-a-Pic is used for the
+aesthetic-quality task.)
 
-1. **Encode the preference dataset** into the latent layout above, with the
-   **chosen** image as `pos_file` and the **rejected** image as `neg_file` for
-   each prompt.
+1. **Encode your preference dataset** into the latent layout above: for each
+   prompt, the **preferred** sample `xʷ₀` becomes `pos_file` and the
+   **dispreferred** sample `xˡ₀` becomes `neg_file`.
 
-2. **Pre-train the winning/losing model pair** (two LoRA adapters, MSE objective)
-   and then **run DDSPO** using them via `--lora_path`. Both steps are wired up
-   in one script:
+2. **Pre-train the winning/losing model pair** (two LoRA adapters, standard
+   diffusion MSE objective) and then **run DDSPO** using them via `--lora_path`.
+   Both steps are wired up in one script:
 
    ```bash
    MODEL_TYPE=sd15 bash scripts/train_ddspo_lora_target.sh
    ```
 
-   Under the hood: `ddspo.train_lora_target` trains `pos_lora_unet/`
-   (winning) and `neg_lora_unet/` (losing); then `ddspo.train --lora_path <dir>`
-   uses their scores as the contrastive-pair targets.
+   Under the hood: `ddspo.train_lora_target` fine-tunes `pos_lora_unet/` (the
+   winning model `φʷ` on preferred samples) and `neg_lora_unet/` (the losing
+   model `φˡ` on dispreferred samples); then `ddspo.train --cpp --lora_path <dir>`
+   uses their per-step scores as the contrastive-pair targets.
 
 All scripts are thin wrappers around `python -m ddspo.train ...`; see them for
 the exact flags and `ddspo/args.py` for the full argument reference.
@@ -132,14 +140,15 @@ the exact flags and `ddspo/args.py` for the full argument reference.
 ### Key arguments
 
 - `--model_type {sd15,sdxl,sd3,sana}` — model family.
-- `--beta_dpo` — DPO temperature (KL strength).
-- `--only_cfg` — **TF-CPP**: derive every target from the frozen reference model
-  on the original vs. degraded prompt.
-- `--lora_path` — **DD-CPP**: directory with the trained `pos_lora_unet/` and
-  `neg_lora_unet/` pair (SD1.x / SDXL).
+- `--cpp` — use CPP score targets for every sample (DDSPO). Omit it to fall back
+  to forward-process noise targets (Diffusion-DPO baseline). Default instantiation
+  is TF-CPP; add `--lora_path` for DD-CPP.
+- `--lora_path` — **DD-CPP**: directory with the trained `pos_lora_unet/` (winning)
+  and `neg_lora_unet/` (losing) pair (SD1.x / SDXL).
+- `--beta_dpo` — divergence-penalty temperature β. Paper defaults: 16000 (TF-CPP,
+  SD1.x/SDXL), 8000 (DD-CPP), 2000 (SANA / SD3). lr is scaled as β / 2.048e8.
 - `--rand_cond`, `--extra_text_path` — random-condition-removal: mix in extra
   unpaired TF-CPP supervision from additional prompt files.
-- `--guidance_scale` — CFG scale for the reference target (SD1.x / SDXL).
 - Flow-matching (SD3 / SANA): `--weighting_scheme`, `--precondition_outputs`
   (SD3), `--rank` (SANA LoRA), `--max_sequence_length`.
 

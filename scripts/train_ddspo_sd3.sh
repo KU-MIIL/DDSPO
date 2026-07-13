@@ -18,12 +18,12 @@ accelerate launch --num_processes "${NUM_GPUS}" -m ddspo.train \
     --mixed_precision bf16 \
     --gradient_checkpointing \
     --train_batch_size 1 \
-    --gradient_accumulation_steps 128 \
-    --max_train_steps 150 \
-    --learning_rate 1e-8 --scale_lr \
-    --lr_scheduler constant_with_warmup --lr_warmup_steps 100 \
-    --beta_dpo 1000 \
-    --only_cfg \
+    --gradient_accumulation_steps 2048 \
+    --max_train_steps 100 \
+    --learning_rate 9.766e-6 \
+    --lr_scheduler constant \
+    --beta_dpo 2000 \
+    --cpp \
     --weighting_scheme logit_normal \
     --precondition_outputs 1 \
     --checkpointing_steps 50 \
