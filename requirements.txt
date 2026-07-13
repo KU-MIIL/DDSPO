@@ -1,0 +1,15 @@
+# Core DDSPO training dependencies.
+# SANA / SD3 support requires a recent diffusers.
+torch>=2.1
+diffusers>=0.32.0
+transformers>=4.44.0
+accelerate>=0.30.0
+peft>=0.11.0
+safetensors>=0.4.0
+datasets
+numpy
+Pillow
+tqdm
+sentencepiece      # T5 (SD3) and Gemma2 (SANA) tokenizers
+tensorboard        # default --report_to; use wandb instead if preferred
+# wandb            # optional experiment tracking

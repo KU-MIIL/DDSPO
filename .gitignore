@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Data / weights / outputs (never commit)
+data/
+results/
+outputs/
+cache/
+hf_cache/
+logs/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+
+# Generated artifacts
+*.log
+*.out
+*.csv
+*.jsonl
+*.parquet
+*.png
+*.jpg
+
+# Secrets / keys
+*_key
+*.pem
+*.pub
+.env
